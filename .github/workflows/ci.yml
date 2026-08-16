@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # Self-hosted ARC runner: runs-on == the gha-runner-scale-set release name.
+    runs-on: runbook-lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl ca-certificates tar
+          ver=1.22.5
+          arch=$(dpkg --print-architecture) # amd64 | arm64
+          curl -fsSL "https://go.dev/dl/go${ver}.linux-${arch}.tar.gz" -o /tmp/go.tgz
+          sudo rm -rf /usr/local/go
+          sudo tar -C /usr/local -xzf /tmp/go.tgz
+          echo "/usr/local/go/bin" >> "$GITHUB_PATH"
+
+      - name: Go version
+        run: go version
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Build
+        run: go build -o runbook-lint .
+
+      - name: Self-check against examples
+        run: ./runbook-lint --max-age-days 0 examples/runbooks

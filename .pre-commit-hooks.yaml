@@ -1,0 +1,7 @@
+- id: runbook-lint
+  name: runbook-lint
+  description: Lint operational runbooks for required structure, frontmatter, staleness and broken links.
+  entry: runbook-lint
+  language: golang
+  types: [markdown]
+  pass_filenames: true

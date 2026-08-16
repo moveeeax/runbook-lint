@@ -1,0 +1,25 @@
+name: runbook-lint
+description: Lint operational runbooks for required structure, frontmatter, staleness and broken links.
+branding:
+  icon: check-circle
+  color: blue
+inputs:
+  path:
+    description: Path(s) to runbooks (space-separated file or directory paths).
+    required: false
+    default: runbooks/
+  args:
+    description: Extra flags passed to runbook-lint (e.g. "--json --max-age-days 90").
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: "1.22"
+    - shell: bash
+      run: |
+        set -euo pipefail
+        go install github.com/moveeeax/runbook-lint@latest
+        runbook-lint ${{ inputs.args }} ${{ inputs.path }}

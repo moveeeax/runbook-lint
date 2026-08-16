@@ -1,0 +1,12 @@
+# Built binary — anchored to the repo root so it never shadows a cmd/ source dir.
+/runbook-lint
+/rbl
+/bin/
+
+# OS / editor cruft
+*.exe
+.DS_Store
+
+# Always track fixtures and examples.
+!testdata/**
+!examples/**
