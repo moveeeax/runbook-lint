@@ -8,8 +8,7 @@ on:
 
 jobs:
   test:
-    # Self-hosted ARC runner: runs-on == the gha-runner-scale-set release name.
-    runs-on: runbook-lint
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
