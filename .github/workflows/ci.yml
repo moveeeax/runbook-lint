@@ -6,32 +6,34 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.26", "1.27"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Install Go
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends curl ca-certificates tar
-          ver=1.22.5
-          arch=$(dpkg --print-architecture) # amd64 | arm64
-          curl -fsSL "https://go.dev/dl/go${ver}.linux-${arch}.tar.gz" -o /tmp/go.tgz
-          sudo rm -rf /usr/local/go
-          sudo tar -C /usr/local -xzf /tmp/go.tgz
-          echo "/usr/local/go/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go }}
 
       - name: Go version
         run: go version
+
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
 
       - name: Vet
         run: go vet ./...
 
       - name: Test
-        run: go test ./...
+        run: go test -race ./...
 
       - name: Build
         run: go build -o runbook-lint .

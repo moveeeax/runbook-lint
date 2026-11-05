@@ -1,7 +1,7 @@
 # runbook-lint
 
 [![ci](https://github.com/moveeeax/runbook-lint/actions/workflows/ci.yml/badge.svg)](https://github.com/moveeeax/runbook-lint/actions/workflows/ci.yml)
-[![Go](https://img.shields.io/badge/go-1.22-00ADD8?logo=go)](https://go.dev)
+[![Go](https://img.shields.io/badge/go-1.26%2B-00ADD8?logo=go)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 Lint operational runbooks for the things you always wish you'd checked *before*
@@ -27,6 +27,8 @@ Errors fail the run (exit code `1`); staleness is a warning (exit `0`). Usage
 errors exit `2`.
 
 ## Install
+
+Requires Go 1.26 or newer.
 
 ```shell
 go install github.com/moveeeax/runbook-lint@latest
@@ -88,7 +90,7 @@ last-reviewed: 2026-08-01
 
 ## How it works
 
-Frontmatter is split off the top `---` fence and parsed with `gopkg.in/yaml.v3`.
+Frontmatter is split off the top `---` fence and parsed with `go.yaml.in/yaml/v3`.
 The Markdown body is parsed into an AST with
 [`goldmark`](https://github.com/yuin/goldmark), and a single tree walk collects
 every heading and link. Sections are matched against the required set,
@@ -106,6 +108,10 @@ deterministic.
     path: runbooks/
     args: --max-age-days 90
 ```
+
+The action builds the `runbook-lint` version matching the ref you pin
+(`@v0` resolves to the newest `v0.x.y` release, `@v0.2.0` to exactly that one).
+Override the toolchain with the `go-version` input (default `1.26`).
 
 ### pre-commit
 

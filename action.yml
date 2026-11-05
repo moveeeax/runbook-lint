@@ -12,14 +12,27 @@ inputs:
     description: Extra flags passed to runbook-lint (e.g. "--json --max-age-days 90").
     required: false
     default: ""
+  go-version:
+    description: Go toolchain used to build runbook-lint.
+    required: false
+    default: "1.26"
 runs:
   using: composite
   steps:
-    - uses: actions/setup-go@v5
+    - uses: actions/setup-go@v7
       with:
-        go-version: "1.22"
+        go-version: ${{ inputs.go-version }}
     - shell: bash
+      env:
+        RUNBOOK_LINT_REF: ${{ github.action_ref }}
+        RUNBOOK_LINT_ARGS: ${{ inputs.args }}
+        RUNBOOK_LINT_PATH: ${{ inputs.path }}
       run: |
         set -euo pipefail
-        go install github.com/moveeeax/runbook-lint@latest
-        runbook-lint ${{ inputs.args }} ${{ inputs.path }}
+        # Install the binary matching the action ref the caller pinned
+        # (e.g. @v0.2.0 or a commit SHA); fall back to latest for local use.
+        ref="${RUNBOOK_LINT_REF:-latest}"
+        go install "github.com/moveeeax/runbook-lint@${ref}"
+        # Word splitting of args/path is intentional (multiple flags/paths).
+        # shellcheck disable=SC2086
+        runbook-lint $RUNBOOK_LINT_ARGS $RUNBOOK_LINT_PATH
