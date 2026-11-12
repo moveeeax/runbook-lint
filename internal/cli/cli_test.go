@@ -11,7 +11,7 @@ import (
 
 func TestRunCleanDir(t *testing.T) {
 	var out, errb bytes.Buffer
-	code := Run([]string{"--max-age-days", "0", "../../testdata/runbooks/good.md"}, &out, &errb)
+	code := Run([]string{"--max-age-days", "0", "../../testdata/runbooks/good.md"}, nil, &out, &errb)
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0; stderr=%s out=%s", code, errb.String(), out.String())
 	}
@@ -22,7 +22,7 @@ func TestRunCleanDir(t *testing.T) {
 
 func TestRunReportsErrorsWithExit1(t *testing.T) {
 	var out, errb bytes.Buffer
-	code := Run([]string{"../../testdata/runbooks/bad.md"}, &out, &errb)
+	code := Run([]string{"../../testdata/runbooks/bad.md"}, nil, &out, &errb)
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1; out=%s", code, out.String())
 	}
@@ -30,7 +30,7 @@ func TestRunReportsErrorsWithExit1(t *testing.T) {
 
 func TestRunJSONShape(t *testing.T) {
 	var out, errb bytes.Buffer
-	code := Run([]string{"--json", "../../testdata/runbooks/bad.md"}, &out, &errb)
+	code := Run([]string{"--json", "../../testdata/runbooks/bad.md"}, nil, &out, &errb)
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
 	}
@@ -45,14 +45,14 @@ func TestRunJSONShape(t *testing.T) {
 
 func TestRunNoArgsIsUsageError(t *testing.T) {
 	var out, errb bytes.Buffer
-	if code := Run(nil, &out, &errb); code != 2 {
+	if code := Run(nil, nil, &out, &errb); code != 2 {
 		t.Fatalf("exit = %d, want 2", code)
 	}
 }
 
 func TestVersion(t *testing.T) {
 	var out, errb bytes.Buffer
-	if code := Run([]string{"--version"}, &out, &errb); code != 0 {
+	if code := Run([]string{"--version"}, nil, &out, &errb); code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
 	if !strings.Contains(out.String(), Version) {

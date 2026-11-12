@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/moveeeax/runbook-lint/internal/config"
 	"github.com/moveeeax/runbook-lint/internal/linter"
 )
 
@@ -22,16 +23,25 @@ const Version = "0.2.0"
 // Run executes the CLI and returns a process exit code:
 //
 //	0 = clean, 1 = at least one error-level finding, 2 = usage/IO error.
-func Run(args []string, stdout, stderr io.Writer) int {
+//
+// `runbook-lint run ...` executes a runbook instead; see runRunbook.
+func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "run" {
+		return runRunbook(args[1:], stdin, stdout, stderr)
+	}
+
 	fs := flag.NewFlagSet("runbook-lint", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	jsonOut := fs.Bool("json", false, "emit findings as JSON")
 	maxAge := fs.Int("max-age-days", 180, "warn on runbooks not reviewed within N days (0 disables)")
+	configPath := fs.String("config", "", "config file to use for every runbook (default: nearest "+config.FileName+" above each file)")
 	showVersion := fs.Bool("version", false, "print version and exit")
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, "usage: runbook-lint [flags] <path>...\n\n")
+		fmt.Fprintf(stderr, "usage: runbook-lint [flags] <path>...\n")
+		fmt.Fprintf(stderr, "       runbook-lint run [flags] <runbook.md>\n\n")
 		fmt.Fprintf(stderr, "Lint operational runbooks for required structure, frontmatter,\n")
-		fmt.Fprintf(stderr, "staleness and broken internal links. Paths may be files or directories.\n\nFlags:\n")
+		fmt.Fprintf(stderr, "staleness and broken internal links. Paths may be files or directories.\n")
+		fmt.Fprintf(stderr, "See 'runbook-lint run -h' for executing a runbook step by step.\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -47,9 +57,20 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	cfg := linter.DefaultConfig()
-	cfg.MaxAgeDays = *maxAge
-	cfg.Now = time.Now()
+	maxAgeSet := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "max-age-days" {
+			maxAgeSet = true
+		}
+	})
+
+	base := linter.DefaultConfig()
+	base.Now = time.Now()
+	rules, err := newResolver(*configPath, base)
+	if err != nil {
+		fmt.Fprintln(stderr, "error:", err)
+		return 2
+	}
 
 	files, err := collect(paths)
 	if err != nil {
@@ -63,6 +84,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	var all []linter.Finding
 	for _, f := range files {
+		cfg, err := rules.forFile(f)
+		if err != nil {
+			fmt.Fprintln(stderr, "error:", err)
+			return 2
+		}
+		// Flags win over the config file, including its severity rules.
+		if maxAgeSet {
+			cfg.MaxAgeDays = *maxAge
+			cfg.SeverityRules = withoutMaxAge(cfg.SeverityRules)
+		}
 		found, err := linter.LintFile(f, cfg)
 		if err != nil {
 			fmt.Fprintf(stderr, "error reading %s: %v\n", f, err)
@@ -75,6 +106,67 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return renderJSON(stdout, all)
 	}
 	return renderText(stdout, len(files), all)
+}
+
+// resolver picks the config file for each runbook: the one given with
+// --config, or the nearest .runbook-lint.yaml walking up from the file.
+type resolver struct {
+	base   linter.Config
+	fixed  *config.File
+	byDir  map[string]*config.File // nil value: no config file above this dir
+	loaded map[string]*config.File
+}
+
+func newResolver(path string, base linter.Config) (*resolver, error) {
+	r := &resolver{base: base, byDir: map[string]*config.File{}, loaded: map[string]*config.File{}}
+	if path != "" {
+		f, err := config.Load(path)
+		if err != nil {
+			return nil, err
+		}
+		r.fixed = f
+	}
+	return r, nil
+}
+
+func (r *resolver) forFile(file string) (linter.Config, error) {
+	f := r.fixed
+	if f == nil {
+		dir := filepath.Dir(file)
+		cached, ok := r.byDir[dir]
+		if !ok {
+			p, err := config.Find(dir)
+			if err != nil {
+				return r.base, err
+			}
+			if p != "" {
+				if cached = r.loaded[p]; cached == nil {
+					if cached, err = config.Load(p); err != nil {
+						return r.base, err
+					}
+					r.loaded[p] = cached
+				}
+			}
+			r.byDir[dir] = cached
+		}
+		f = cached
+	}
+	if f == nil {
+		return r.base, nil
+	}
+	return f.Resolve(r.base, file)
+}
+
+func withoutMaxAge(rules map[string]linter.Rules) map[string]linter.Rules {
+	if rules == nil {
+		return nil
+	}
+	out := make(map[string]linter.Rules, len(rules))
+	for k, v := range rules {
+		v.MaxAgeDays = nil
+		out[k] = v
+	}
+	return out
 }
 
 func renderJSON(w io.Writer, findings []linter.Finding) int {

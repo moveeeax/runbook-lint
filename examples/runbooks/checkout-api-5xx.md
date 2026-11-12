@@ -16,9 +16,17 @@ last-reviewed: 2099-01-01
 
 Check the [dependencies runbook](dependencies.md) and the dashboard.
 
+```bash step=verify
+kubectl -n ${NAMESPACE} rollout history deploy/checkout-api
+```
+
 ## Mitigation
 
-Roll back the latest deploy with `kubectl rollout undo deploy/checkout-api`.
+Roll back the latest deploy:
+
+```bash
+kubectl -n ${NAMESPACE} rollout undo deploy/checkout-api
+```
 
 ## Escalation
 
