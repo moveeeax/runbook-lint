@@ -111,3 +111,46 @@ func TestSplitFrontmatter(t *testing.T) {
 		t.Errorf("body = %q want %q", string(body), want)
 	}
 }
+
+func TestConfigWithLeavesNilFieldsAlone(t *testing.T) {
+	ninety := 90
+	got := testConfig().With(Rules{RequiredSections: []string{"Impact"}, MaxAgeDays: &ninety})
+	if len(got.RequiredSections) != 1 || got.RequiredSections[0] != "Impact" {
+		t.Errorf("sections = %v", got.RequiredSections)
+	}
+	if got.MaxAgeDays != 90 {
+		t.Errorf("max age = %d, want 90", got.MaxAgeDays)
+	}
+	if len(got.RequiredFrontmatter) != 3 {
+		t.Errorf("frontmatter should be inherited, got %v", got.RequiredFrontmatter)
+	}
+	cleared := testConfig().With(Rules{RequiredFrontmatter: []string{}})
+	if len(cleared.RequiredFrontmatter) != 0 {
+		t.Errorf("empty list should clear frontmatter, got %v", cleared.RequiredFrontmatter)
+	}
+}
+
+func TestSeverityRulesApplyToMatchingRunbook(t *testing.T) {
+	thirty := 30
+	cfg := testConfig()
+	cfg.SeverityRules = map[string]Rules{
+		"sev1": {MaxAgeDays: &thirty, RequiredSections: []string{"Symptoms", "Rollback"}},
+	}
+	doc := func(sev string) []byte {
+		return []byte("---\nowner: a\nseverity: " + sev + "\nservice: s\nlast-reviewed: 2026-07-01\n---\n\n" +
+			"# T\n\n## Symptoms\n\n## Diagnosis\n\n## Mitigation\n\n## Escalation\n")
+	}
+
+	sev1 := LintSource("sev1.md", doc("SEV1"), cfg)
+	if got := countRule(sev1, "stale", Warning); got != 1 {
+		t.Errorf("sev1: stale warnings = %d, want 1 (46 days > 30): %+v", got, sev1)
+	}
+	if got := countRule(sev1, "section", Error); got != 1 {
+		t.Errorf("sev1: section errors = %d, want 1 (Rollback): %+v", got, sev1)
+	}
+
+	sev2 := LintSource("sev2.md", doc("sev2"), cfg)
+	if len(sev2) != 0 {
+		t.Errorf("sev2 should use the base rules and be clean, got %+v", sev2)
+	}
+}

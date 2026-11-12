@@ -42,6 +42,46 @@ type Config struct {
 	MaxAgeDays int
 	// Now is the reference time for staleness. Injectable so tests are deterministic.
 	Now time.Time
+	// SeverityRules adjust the rules for runbooks whose frontmatter `severity`
+	// matches the key (case-insensitive), e.g. a shorter review cycle for sev1.
+	SeverityRules map[string]Rules
+}
+
+// Rules is a partial Config. A nil field leaves the value it is applied to
+// unchanged; an empty, non-nil list clears it.
+type Rules struct {
+	RequiredSections    []string `yaml:"required_sections"`
+	RequiredFrontmatter []string `yaml:"required_frontmatter"`
+	MaxAgeDays          *int     `yaml:"max_age_days"`
+}
+
+// With returns a copy of c with the non-nil fields of r applied.
+func (c Config) With(r Rules) Config {
+	if r.RequiredSections != nil {
+		c.RequiredSections = r.RequiredSections
+	}
+	if r.RequiredFrontmatter != nil {
+		c.RequiredFrontmatter = r.RequiredFrontmatter
+	}
+	if r.MaxAgeDays != nil {
+		c.MaxAgeDays = *r.MaxAgeDays
+	}
+	return c
+}
+
+// forSeverity applies the severity rule matching the runbook's frontmatter.
+func (c Config) forSeverity(fm map[string]any) Config {
+	v, ok := fm["severity"]
+	if !ok || v == nil || len(c.SeverityRules) == 0 {
+		return c
+	}
+	sev := strings.ToLower(strings.TrimSpace(fmt.Sprint(v)))
+	for key, r := range c.SeverityRules {
+		if strings.ToLower(key) == sev {
+			return c.With(r)
+		}
+	}
+	return c
 }
 
 // DefaultConfig is the opinionated baseline: the four sections every on-call
@@ -79,6 +119,7 @@ func LintSource(path string, src []byte, cfg Config) []Finding {
 	case fmErr != nil:
 		add(Error, "frontmatter", fmt.Sprintf("invalid YAML frontmatter: %v", fmErr))
 	default:
+		cfg = cfg.forSeverity(fm)
 		for _, key := range cfg.RequiredFrontmatter {
 			if v, ok := fm[key]; !ok || isEmpty(v) {
 				add(Error, "frontmatter", fmt.Sprintf("missing required frontmatter field %q", key))

@@ -24,7 +24,9 @@ out at 3am. `runbook-lint` turns those gaps into a failing check in CI.
   ignored.
 
 Errors fail the run (exit code `1`); staleness is a warning (exit `0`). Usage
-errors exit `2`.
+errors exit `2`. Sections, frontmatter fields and the age limit can be changed
+per repository, directory or severity with a
+[configuration file](#configuration-file).
 
 ## Install
 
@@ -63,7 +65,8 @@ Flags:
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `--json` | off | Emit findings as a JSON array. |
-| `--max-age-days N` | `180` | Warn on runbooks not reviewed within N days (`0` disables). |
+| `--max-age-days N` | `180` | Warn on runbooks not reviewed within N days (`0` disables). Overrides the config file, severity rules included. |
+| `--config PATH` | nearest `.runbook-lint.yaml` | Use this config file for every runbook. |
 | `--version` | | Print the version and exit. |
 
 A runbook that passes looks like this — see [`examples/runbooks`](examples/runbooks):
@@ -87,6 +90,88 @@ last-reviewed: 2026-08-01
 ## Escalation
 ...
 ```
+
+## Configuration file
+
+The built-in rules are a default, not a requirement. To use other headings or
+extra frontmatter, add a `.runbook-lint.yaml`. For each runbook the nearest one
+found walking up from the runbook's directory is used; `--config PATH` uses one
+file for everything instead.
+
+```yaml
+# Replace the defaults. Leave a key out to keep the built-in value;
+# an empty list ([]) requires nothing.
+required_sections: [Symptoms, Impact, Mitigation, Rollback]
+required_frontmatter: [owner, severity, service, runbook-version]
+max_age_days: 365
+
+# Applied in order on top of the rules above. Globs are relative to the
+# directory of this file; ** matches any number of directories.
+overrides:
+  - glob: "sev1/**"
+    required_sections: [Symptoms, Impact, Mitigation, Rollback, Escalation]
+  - glob: "**/legacy-*.md"
+    max_age_days: 0
+
+# Applied last, by the runbook's own `severity` frontmatter (case-insensitive).
+severity_rules:
+  sev1:
+    max_age_days: 90
+```
+
+Each override and severity rule takes the same three keys as the top level.
+Unknown keys and negative ages are an error (exit `2`), so a typo does not
+quietly fall back to the defaults. `--max-age-days` wins over every
+`max_age_days` in the file.
+
+## Running a runbook
+
+`runbook-lint run` executes the fenced `bash` and `sh` blocks of a runbook in
+document order, so the documented procedure and what was actually run cannot
+drift apart. Other fences (`console`, `yaml`, ...) are treated as
+documentation.
+
+```shell
+runbook-lint run runbooks/failover.md --var HOST=db-02 --transcript ./inc-1043.log
+```
+
+Every step is shown with its number and source line and waits for an answer:
+`r` runs it, `s` skips it, `e` edits it before running (in `$VISUAL` or
+`$EDITOR`; without either, type the replacement and end it with a line holding
+only `.`), `a` aborts. End of input counts as abort.
+
+- `${NAME}` placeholders with upper-case names are filled from `--var NAME=VALUE`
+  or prompted for once, the first time a step needs them, then reused. Names
+  set in the environment are left for the shell to expand, and so are names
+  the step assigns itself (`NAME=...`, `read NAME`, `for NAME in`). `${lower}`
+  and `$NAME` are never touched.
+- `--transcript FILE` appends a timestamped record of each step: the command
+  as run, whether it was edited or skipped, exit code, duration, stdout and
+  stderr. The file is created with mode `0600`, since output can contain
+  secrets.
+- A step that exits non-zero stops the run with exit code `1` and prints the
+  `--from N` to resume with. `--keep-going` continues instead.
+- `--dry-run` prints the selected steps, with `--var` values filled in, and
+  runs nothing.
+- `--from N` starts at step N. `--only verify` runs only the steps whose fence
+  carries `step=verify`, e.g. a read-only triage pass:
+
+  ````markdown
+  ```bash step=verify
+  kubectl -n ${NAMESPACE} rollout history deploy/checkout-api
+  ```
+  ````
+
+Each step runs as `bash -c` or `sh -c` in its own process from the current
+directory, so `cd` and variables do not carry over between steps. Commands
+get the terminal's stdin; their stdout and stderr go through a pipe to be
+captured, so programs that check for a TTY may switch to non-interactive
+output. Ctrl-C stops the running command, the result is recorded, and the run
+stops.
+
+Exit codes: `0` every selected step ran or was skipped, `1` a step failed or
+the run was aborted, `2` usage or I/O error. To lint a directory literally
+named `run`, pass it as `./run`.
 
 ## How it works
 
